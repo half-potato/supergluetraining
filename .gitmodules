@@ -1,0 +1,6 @@
+[submodule "third_party/cpaint"]
+	path = third_party/cpaint
+	url = git@gitlab.com:confidence_painting/cpaint.git
+[submodule "third_party/SuperGluePretrainedNetwork"]
+	path = third_party/SuperGluePretrainedNetwork
+	url = https://github.com/magicleap/SuperGluePretrainedNetwork

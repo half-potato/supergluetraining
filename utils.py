@@ -24,7 +24,7 @@ def np_apply_along_axis(func1d, axis, arr, dtype=np.int64):
 
 @nb.njit
 def ground_truth_matches(kpts0, kpts1, K0, K1, T0to1, depth0, depth1):
-    
+
     m = kpts0.shape[0]
     n = kpts1.shape[0]
 

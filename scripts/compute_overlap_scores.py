@@ -27,7 +27,7 @@ def frustum_intersect(w, h, K, K_inv, E1, E2):
     p1[2] = (W1 @ np.array([w, 0, 1, 1.0]).astype(np.float64))[:3]
     p1[3] = (W1 @ np.array([w, h, 1, 1.0]).astype(np.float64))[:3]
     p1[4] = (W1 @ np.array([0, h, 1, 1.0]).astype(np.float64))[:3]
-    
+
     p2 = np.empty((5, 3))
     p2[0] = (W2 @ np.array([0, 0, 0, 1]).astype(np.float64))[:3]
     p2[1] = (W2 @ np.array([0, 0, 1, 1]).astype(np.float64))[:3]
@@ -115,7 +115,10 @@ class ScanProcessor:
 
     def load_depth_and_poses(self):
         for i in range(0, self.scene_info.num_frames, self.frame_skip):
-            img = cv2.imread("{}/frame-{:06d}.depth.png".format(self.scan_dir, i), -1)
+            path = "{}/frame-{:06d}.depth.png".format(self.scan_dir, i)
+            img = cv2.imread(path, -1)
+            if img is None:
+                print(path)
             if img.shape[0] != self.height or img.shape[1] != self.width:
                 img = cv2.resize(img, (self.width, self.height))
             self.depth_images[i] = img / 1000.0
@@ -127,13 +130,13 @@ class ScanProcessor:
         for i in range(0, self.scene_info.num_frames):
             for j in range(i + 1, self.scene_info.num_frames):
                 self.compute_overlap(i, j)
-        
+
         self.scores.sort()
 
     def write_scores(self, outfilepath):
         to_save = np.array(self.scores)
         np.save(outfilepath, to_save)
-    
+
     @staticmethod
     @nb.njit
     def compute_overlap_score(w, h, stride, coords, ones, frame1_depth, frame2_depth,
@@ -190,7 +193,7 @@ def run(opt, scanId):
         return
 
     print("Computing overlaps for " + scanId)
-        
+
     info_file = "{}/{}/_info.txt".format(opt.data_dir, scanId)
     overlap_file = "{}/{}/{}_overlap_scores.npy".format(opt.data_dir, scanId, scanId)
     if not opt.overwrite_overlap_files and os.path.exists(overlap_file):
@@ -206,7 +209,6 @@ def run(opt, scanId):
 
 
 if __name__ == '__main__':
-    
     parser = argparse.ArgumentParser(
         description='Compute overlap scores for Scannet pairs (the number of pixels of A visible in B and vice versa). '
                 'Scores are written to <scanId>_overlap_scores.npy in each scan folder. '
@@ -246,6 +248,3 @@ if __name__ == '__main__':
 
     end = time.time()
     print("DONE: " + str(end - start) + " seconds")
-
-
-        

@@ -4,6 +4,7 @@ import os
 import argparse
 from load_scannet import ScannetDataset, SceneFiles
 from models.superglue import SuperGlue
+from models.cpainted import CPainted
 from models.superpoint import SuperPoint
 from utils import ground_truth_matches
 from multiprocessing import Pool
@@ -83,7 +84,12 @@ if __name__ == "__main__":
             batch_size=opt.batch_size, num_workers=opt.num_threads, drop_last=True)
 
     superglue = SuperGlue({}).train().cuda()
-    superpoint = SuperPoint({
+    #  superpoint = SuperPoint({
+    #      'nms_radius': 4,
+    #      'keypoint_threshold': 0.005,
+    #      'max_keypoints': 400
+    #  }).eval().cuda()
+    superpoint = CPainted({
         'nms_radius': 4,
         'keypoint_threshold': 0.005,
         'max_keypoints': 400
@@ -97,7 +103,7 @@ if __name__ == "__main__":
     for epoch in range(opt.num_epochs):
         for i, data in enumerate(trainloader):
 
-            # detect superpoint keypoints
+            # detect superpoint keypoints. Format (N, (col, row))
             with torch.no_grad():
                 p1 = superpoint({'image': data['image0'].cuda()})
                 p2 = superpoint({'image': data['image1'].cuda()})

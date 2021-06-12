@@ -2,6 +2,16 @@
 
 This repository attempts to reproduce the training code for the indoor pose estimation experiment for the [SuperGlue](https://github.com/magicleap/SuperGluePretrainedNetwork) network.
 
+```
+cd ~ &&
+git clone https://github.com/ScanNet/ScanNet &&
+cd ScanNet/SensReader/c++/ &&
+make &&
+python download-scannet.py -o /data --type .sens &&
+python scripts/extract_sens.py ~/ScanNet/SensReader/c++/sens /data/scans --convert_pgm_to_png &&
+python scripts/compute_overlap_scores.py /data/scans
+```
+
 ## Preprocessing
 
 Download the [ScanNet](https://github.com/ScanNet/ScanNet) sensor data after requesting access. The preprocessing scripts assume the following directory structure:

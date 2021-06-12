@@ -40,11 +40,9 @@ class ScannetDataset(Dataset):
     def __init__(self, scene_files):
         self.samples = []
         self.resample(scene_files)
-        
 
     def __len__(self):
         return len(self.samples)
-
 
     def __getitem__(self, idx):
 
@@ -62,7 +60,6 @@ class ScannetDataset(Dataset):
             'intrinsics': K,
             'T_0to1': T_1to2
         }
-        
 
     def resample(self, scene_files):
         self.samples = []
@@ -79,8 +76,3 @@ class ScannetDataset(Dataset):
                 K = scene_files.intrinsics["{}_{:02d}".format(scene_id, scan_id)]
                 self.samples.append([img_path1, img_path2, depth_path1, depth_path2, K, T_1to2])
         random.shuffle(self.samples)
-
-
-
-
-        
