@@ -63,7 +63,12 @@ class ScannetDataset(Dataset):
 
     def resample(self, scene_files):
         self.samples = []
+        desired_shape = (480, 640)
         for scene_id, f in scene_files.scenefiles.items():
+            img_path1 = "{}/{}_{:02d}/frame-{:06d}.color.jpg".format(scene_files.scan_path, scene_id, 0, 0)
+            img1 = torch.from_numpy(cv2.imread(img_path1, cv2.IMREAD_GRAYSCALE)) / 255
+            if img1.shape[0] != desired_shape[0] or img1.shape[1] != desired_shape[1]:
+                continue
             for i in random.sample(range(f.size()//ScannetDataset.ENTRY_SIZE_BYTES), ScannetDataset.SAMPLES_PER_SCENE):
                 byte_offset = i * ScannetDataset.ENTRY_SIZE_BYTES
                 bytez = f[byte_offset:byte_offset + ScannetDataset.ENTRY_SIZE_BYTES]
@@ -73,6 +78,7 @@ class ScannetDataset(Dataset):
                 img_path2 = "{}/{}_{:02d}/frame-{:06d}.color.jpg".format(scene_files.scan_path, scene_id, scan_id, frame2_idx)
                 depth_path1 = "{}/{}_{:02d}/frame-{:06d}.depth.png".format(scene_files.scan_path, scene_id, scan_id, frame1_idx)
                 depth_path2 = "{}/{}_{:02d}/frame-{:06d}.depth.png".format(scene_files.scan_path, scene_id, scan_id, frame2_idx)
+
                 K = scene_files.intrinsics["{}_{:02d}".format(scene_id, scan_id)]
                 self.samples.append([img_path1, img_path2, depth_path1, depth_path2, K, T_1to2])
         random.shuffle(self.samples)

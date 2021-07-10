@@ -28,17 +28,18 @@ djj_filter = torch.tensor([
 
 class CPainted(nn.Module):
     default_conf = {
-        "threshold": 0.025,
+        "threshold": 0.0,
         "maxpool_radius": 3,
         "remove_borders": 4,
-        "max_keypoints": 4096,
+        "max_keypoints": 400,
         "subpixel": True,
         'superpoint_desc': True,
         "checkpoint": "fifth_sota_cpainted.pth",
         'model': 'superpoint_bn'
     }
     def __init__(self, config={}):
-        self.config = {**self.default_config, **config}
+        super(CPainted, self).__init__()
+        self.config = {**self.default_conf, **config}
         model_conf = MODELS[self.config['model']]
         self.net = model_conf['net']()
         self.input_size_multiple = model_conf['input_size_multiple']
@@ -57,6 +58,32 @@ class CPainted(nn.Module):
         self.desc_net = SP.SuperPoint(self.config)
         self.net.eval()
         self.desc_net.eval()
+
+    def desc_forward(self, data):
+        # Shared Encoder
+        x = self.desc_net.relu(self.desc_net.conv1a(data['image']))
+        x = self.desc_net.relu(self.desc_net.conv1b(x))
+        x = self.desc_net.pool(x)
+        x = self.desc_net.relu(self.desc_net.conv2a(x))
+        x = self.desc_net.relu(self.desc_net.conv2b(x))
+        x = self.desc_net.pool(x)
+        x = self.desc_net.relu(self.desc_net.conv3a(x))
+        x = self.desc_net.relu(self.desc_net.conv3b(x))
+        x = self.desc_net.pool(x)
+        x = self.desc_net.relu(self.desc_net.conv4a(x))
+        x = self.desc_net.relu(self.desc_net.conv4b(x))
+
+        # Compute the dense keypoint scores
+        cPa = self.desc_net.relu(self.desc_net.convPa(x))
+        scores = self.desc_net.convPb(cPa)
+        scores = torch.nn.functional.softmax(scores, 1)[:, :-1]
+
+        # Compute the dense descriptors
+        cDa = self.desc_net.relu(self.desc_net.convDa(x))
+        descriptors = self.desc_net.convDb(cDa)
+        descriptors = torch.nn.functional.normalize(descriptors, p=2, dim=1)
+        return scores, descriptors
+
 
     def forward(self, data):
         x = data["image"]
@@ -77,13 +104,13 @@ class CPainted(nn.Module):
 
         # remove border, apply nms + threshold
         # Shape: (3, N)
-        mask1 = mask_border(heatmap, border=self.config["remove_borders"])
+        mask1 = mask_border(heatmap, border=self.config["remove_borders"]).unsqueeze(1)
 #         mask2 = mask_max(heatmap, radius=self.config["maxpool_radius"])
 
-        mask2 = mask_max(heatmap, radius=self.config["maxpool_radius"])
+        mask2 = mask_max(heatmap, radius=self.config["maxpool_radius"]).unsqueeze(1)
 
         pooled = mask1 * mask2 * heatmap
-        _, descriptors = self.desc_net._forward(data)
+        _, descriptors = self.desc_forward(data)
 
         # torch where over batch
         pts = []

@@ -78,10 +78,13 @@ if __name__ == "__main__":
     if not os.path.exists(opt.checkpoint_dir):
         os.makedirs(opt.checkpoint_dir)
 
+    print("Loading scene files")
     scene_files = SceneFiles(opt.pairs_path, opt.scans_path)
+    print("Loading scannet dataset")
     scannet = ScannetDataset(scene_files)
     trainloader = torch.utils.data.DataLoader(dataset=scannet, shuffle=False,
             batch_size=opt.batch_size, num_workers=opt.num_threads, drop_last=True)
+    print(f"Done. Loader length: {len(trainloader)}")
 
     superglue = SuperGlue({}).train().cuda()
     #  superpoint = SuperPoint({
@@ -100,6 +103,7 @@ if __name__ == "__main__":
     pool = Pool(max(opt.num_threads, 1))
     iteration = 0
 
+    print("Training")
     for epoch in range(opt.num_epochs):
         for i, data in enumerate(trainloader):
 
