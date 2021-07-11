@@ -34,6 +34,7 @@ def get_release_scans(release_file):
     for scan_line in scan_lines:
         scan_id = scan_line.decode('utf8').rstrip('\n')
         scans.append(scan_id)
+    print(scans)
     return scans
 
 

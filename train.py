@@ -8,7 +8,8 @@ from models.cpainted import CPainted
 from models.superpoint import SuperPoint
 from utils import ground_truth_matches
 from multiprocessing import Pool
-
+import h5py
+from cache_dataset import NAMES
 
 def loss_fn(P, match_indices0, match_indices1, match_weights0, match_weights1):
     bs, ft, _ = P.shape
@@ -20,28 +21,52 @@ def loss_fn(P, match_indices0, match_indices1, match_weights0, match_weights1):
 
     return loss / bs
 
+def batch_to_device(batch, device):
+    for k in batch.keys():
+        if type(batch[k]) == list:
+            if len(batch[k]) == 0 or type(batch[k][0]) == list:
+                continue
+            batch[k] = [item.to(device) if item is not None else None for item in batch[k]]
+        else:
+            batch[k] = batch[k].to(device)
+    return batch
 
-def process_keypoints(kpts0, kpts1, depth0, depth1, K, T_0to1):
-    MI, MJ, WI, WJ = ground_truth_matches(kpts0.cpu().numpy(), kpts1.cpu().numpy(),
-            K.numpy(), K.numpy(), T_0to1.numpy(), depth0.numpy(), depth1.numpy())
-    return {
-        'match_indices0': torch.tensor(MI),
-        'match_indices1': torch.tensor(MJ),
-        'match_weights0': torch.tensor(WI),
-        'match_weights1': torch.tensor(WJ)
-    }
+class Dataset(torch.utils.data.Dataset):
 
+    def __init__(self, fpath):
+        self.fpath = fpath
+        self.handle = h5py.File(self.fpath, 'r', libver='latest')
+        self.length = self.handle['keypoints0'].shape[0]
+        self.handle.close()
+
+    def open_if_closed(self):
+        if self.handle is None:
+            self.handle = h5py.File(self.fpath, 'r', libver='latest')
+
+    def close(self):
+        if self.handle is not None:
+            self.handle.close()
+            self.handle = None
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, i):
+        self.open_if_closed()
+        out = {}
+        for k in NAMES:
+            out[k] = self.handle[k][i]
+        if out['scores0'].sum() == 0:
+            return self[(i+1)%len(self)]
+        return out
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='SuperGlue training',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        'scans_path', type=str,
-        help='Path to the directory of scans')
-    parser.add_argument(
-        'pairs_path', type=str,
-        help='Path to training pair files')
+        'dataset_path', type=str,
+        help='Path to cached dataset')
     parser.add_argument(
         '--num_epochs', type=int, default=500,
         help='Number of epochs')
@@ -74,15 +99,13 @@ if __name__ == "__main__":
         help='Weights are saved after every n epochs')
     opt = parser.parse_args()
 
+    device = torch.device('cuda')
 
     if not os.path.exists(opt.checkpoint_dir):
         os.makedirs(opt.checkpoint_dir)
 
-    print("Loading scene files")
-    scene_files = SceneFiles(opt.pairs_path, opt.scans_path)
-    print("Loading scannet dataset")
-    scannet = ScannetDataset(scene_files)
-    trainloader = torch.utils.data.DataLoader(dataset=scannet, shuffle=False,
+    dataset = Dataset(opt.dataset_path)
+    trainloader = torch.utils.data.DataLoader(dataset, shuffle=True,
             batch_size=opt.batch_size, num_workers=opt.num_threads, drop_last=True)
     print(f"Done. Loader length: {len(trainloader)}")
 
@@ -105,32 +128,9 @@ if __name__ == "__main__":
 
     print("Training")
     for epoch in range(opt.num_epochs):
-        for i, data in enumerate(trainloader):
-
-            # detect superpoint keypoints. Format (N, (col, row))
-            with torch.no_grad():
-                p1 = superpoint({'image': data['image0'].cuda()})
-                p2 = superpoint({'image': data['image1'].cuda()})
-
-            # compute groundtruth matches
-            processed = []
-            params = zip(p1['keypoints'], p2['keypoints'],
-                    data['depth0'], data['depth1'], data['intrinsics'], data['T_0to1'])
-            if opt.num_threads == 0:
-                for p in params:
-                    processed.append(process_keypoints(*p))
-            else:
-                # TODO - untested with more than one cpu. not sure if faster
-                processed = pool.starmap(process_keypoints, params)
-            inputs = {}
-            for k in processed[0]:
-                inputs[k] = torch.stack([e[k] for e in processed], axis=0)
-            inputs['keypoints0'] = torch.stack(p1['keypoints'], axis=0)
-            inputs['descriptors0'] = torch.stack(p1['descriptors'], axis=0)
-            inputs['scores0'] = torch.stack(p1['scores'], axis=0)
-            inputs['keypoints1'] = torch.stack(p2['keypoints'], axis=0)
-            inputs['descriptors1'] = torch.stack(p2['descriptors'], axis=0)
-            inputs['scores1'] = torch.stack(p2['scores'], axis=0)
+        for i, inputs in enumerate(trainloader):
+            # check if batch is a failed one
+            inputs = batch_to_device(inputs, device)
 
             # superglue forward and backward pass
             if i % opt.num_batches_per_optimizer_step == 0:
@@ -146,7 +146,7 @@ if __name__ == "__main__":
             # update learning rate
             if iteration > opt.lr_decay_iter and i % opt.num_batches_per_optimizer_step == 0:
                 lr_scheduler.step()
-            
+
             print("Epoch:", epoch, "Batch:", i, "Loss:", loss)
 
         if epoch % opt.save_every_n_epochs == 0:
@@ -154,4 +154,3 @@ if __name__ == "__main__":
         if iteration == opt.num_iters:
             torch.save(superglue.state_dict(), "{}/superglue_weights_{:04d}.pth".format(opt.checkpoint_dir, epoch))
             break
-        scannet.resample(scene_files)
